@@ -17,6 +17,7 @@ package wei.yuan.hlsplay.hls;
 
 import android.net.Uri;
 import android.support.annotation.Nullable;
+import android.util.Log;
 
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.upstream.DataSource;
@@ -76,29 +77,33 @@ import javax.crypto.spec.SecretKeySpec;
         }
 
         Key cipherKey = new SecretKeySpec(encryptionKey, "AES");
-        AlgorithmParameterSpec ciperIV = new IvParameterSpec(encryptionIv);
+        AlgorithmParameterSpec cipherIV = new IvParameterSpec(encryptionIv);
 
         try {
-            cipher.init(Cipher.DECRYPT_MODE, cipherKey, ciperIV);
+            cipher.init(Cipher.DECRYPT_MODE, cipherKey, cipherIV);
         } catch (InvalidKeyException | InvalidAlgorithmParameterException e) {
             throw new RuntimeException(e);
         }
 
-        cipherInputStream = new CipherInputStream(
-                new DataSourceInputStream(upstream, dataSpec), cipher);
+        DataSourceInputStream dataSourceInputStream = new DataSourceInputStream(upstream, dataSpec);
+        cipherInputStream = new CipherInputStream(dataSourceInputStream, cipher);
+        dataSourceInputStream.open();
 
         return C.LENGTH_UNSET;
     }
 
     @Override
     public void close() throws IOException {
-        cipherInputStream = null;
-        upstream.close();
+        if (cipherInputStream != null) {
+            cipherInputStream = null;
+            upstream.close();
+        }
     }
 
     @Override
     public int read(byte[] buffer, int offset, int readLength) throws IOException {
-        Assertions.checkState(cipherInputStream != null);
+        //Assertions.checkState(cipherInputStream != null);
+        Assertions.checkNotNull(cipherInputStream);
         int bytesRead = cipherInputStream.read(buffer, offset, readLength);
         if (bytesRead < 0) {
             return C.RESULT_END_OF_INPUT;
@@ -106,7 +111,6 @@ import javax.crypto.spec.SecretKeySpec;
         return bytesRead;
     }
 
-    @Nullable
     @Override
     public Uri getUri() {
         return upstream.getUri();

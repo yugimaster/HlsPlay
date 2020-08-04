@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.support.annotation.Nullable;
 import android.util.Log;
 
+import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
@@ -110,10 +111,20 @@ public class CustomHlsDataSource implements DataSource {
         String scheme = dataSpec.uri.getScheme();
         String path = dataSpec.uri.getPath();
         Log.d(TAG, "Decrypt: " + scheme + ", path: " + path);
+        if (path != null && !path.isEmpty() && path.contains("drm")) {
+            Log.d(TAG, "drm url");
+            try {
+                dataSource.open(dataSpec);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
         if (SCHEME_HTTPS.equals(scheme)) {
             // 判断是否为ts片段
-            if (path != null && !path.isEmpty() && path.endsWith(".ts")) {
+            if (path != null && !path.isEmpty() && path.endsWith(".ts") && !aesKey.isEmpty()) {
                 byte[] aesKeyBytes = null;
+                String uri = dataSpec.uri.toString();
+                Log.d(TAG, "Decrypt: ts uri: " + uri);
                 if (aesKey.length() == 32) {
                     Log.d(TAG, "Decrypt: key hex -> " + aesKey);
                     aesKeyBytes = ParseSystemUtil.parseHexStr2Byte(aesKey);
@@ -127,7 +138,8 @@ public class CustomHlsDataSource implements DataSource {
                 byte[] aesIvBytes = ParseSystemUtil.parseHexStr2Byte(hexIndex);
                 Aes128DataSource aes128DataSource = new Aes128DataSource(baseDataSource,
                         aesKeyBytes, aesIvBytes);
-                dataSource = aes128DataSource;
+//                dataSource = aes128DataSource;
+                return aes128DataSource.open(dataSpec);
             } else {
                 dataSource = baseDataSource;
             }
