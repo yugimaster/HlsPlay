@@ -13,6 +13,8 @@ import com.google.android.exoplayer2.util.Assertions;
 
 import java.io.IOException;
 
+import wei.yuan.hlsplay.util.ParseSystemUtil;
+
 /**
  * 自定义的数据工厂类
  * Created by yugimaster on 2020/08/03.
@@ -32,6 +34,7 @@ public class CustomHlsDataSource implements DataSource {
     private final TransferListener listener;
 
     private final DataSource baseDataSource;
+    private final String aesKey;
 
     // Lazily initialized.
     private DataSource fileDataSource;
@@ -40,7 +43,6 @@ public class CustomHlsDataSource implements DataSource {
     private DataSource rtmpDataSource;
 
     private DataSource dataSource;
-    private String AesKey = "1231231241241243";
 
     /**
      * Constructs a new instance, optionally configured to follow cross-protocol redirects.
@@ -52,9 +54,9 @@ public class CustomHlsDataSource implements DataSource {
      *                                    to HTTPS and vice versa) are enabled when fetching remote data.
      */
     public CustomHlsDataSource(Context context, TransferListener listener,
-                               String userAgent, boolean allowCrossProtocolRedirects) {
+                               String userAgent, boolean allowCrossProtocolRedirects, String aesKey) {
         this(context, listener, userAgent, DefaultHttpDataSource.DEFAULT_CONNECT_TIMEOUT_MILLIS,
-                DefaultHttpDataSource.DEFAULT_READ_TIMEOUT_MILLIS, allowCrossProtocolRedirects);
+                DefaultHttpDataSource.DEFAULT_READ_TIMEOUT_MILLIS, allowCrossProtocolRedirects, aesKey);
     }
 
     /**
@@ -72,10 +74,11 @@ public class CustomHlsDataSource implements DataSource {
      */
     public CustomHlsDataSource(Context context, TransferListener listener,
                                String userAgent, int connectTimeoutMillis, int readTimeoutMillis,
-                               boolean allowCrossProtocolRedirects) {
+                               boolean allowCrossProtocolRedirects, String aesKey) {
         this(context, listener,
                 new DefaultHttpDataSource(userAgent, null, connectTimeoutMillis,
-                        readTimeoutMillis, allowCrossProtocolRedirects, null));
+                        readTimeoutMillis, allowCrossProtocolRedirects, null),
+                aesKey);
     }
 
     /**
@@ -87,10 +90,12 @@ public class CustomHlsDataSource implements DataSource {
      * @param baseDataSource A {@link DataSource} to use for URI schemes other than file, asset and
      *                       content. This {@link DataSource} should normally support at least http(s).
      */
-    public CustomHlsDataSource(Context context, TransferListener listener, DataSource baseDataSource) {
+    public CustomHlsDataSource(Context context, TransferListener listener, DataSource baseDataSource,
+                               String aesKey) {
         this.context = context;
         this.listener = listener;
         this.baseDataSource = Assertions.checkNotNull(baseDataSource);
+        this.aesKey = aesKey;
     }
 
     @Override
@@ -103,14 +108,32 @@ public class CustomHlsDataSource implements DataSource {
         Assertions.checkState(dataSource == null);
         // Choose the correct source for the scheme.
         String scheme = dataSpec.uri.getScheme();
-        Log.d(TAG, "解密: " + scheme + ", path: " + dataSpec.uri.getPath());
+        String path = dataSpec.uri.getPath();
+        Log.d(TAG, "Decrypt: " + scheme + ", path: " + path);
         if (SCHEME_HTTPS.equals(scheme)) {
             // 判断是否为ts片段
-            if (dataSpec.uri.getPath().endsWith(".ts")) {
-
+            if (path != null && !path.isEmpty() && path.endsWith(".ts")) {
+                byte[] aesKeyBytes = null;
+                if (aesKey.length() == 32) {
+                    Log.d(TAG, "Decrypt: key hex -> " + aesKey);
+                    aesKeyBytes = ParseSystemUtil.parseHexStr2Byte(aesKey);
+                } else if (aesKey.length() == 16) {
+                    aesKeyBytes = aesKey.getBytes();
+                }
+                String index = getTsIndex(path);
+                String hexIndex = getTsIndexHex(index);
+                Log.d(TAG, "Decrypt: ts index -> " + index);
+                Log.d(TAG, "Decrypt: ts index hex -> " + hexIndex);
+                byte[] aesIvBytes = ParseSystemUtil.parseHexStr2Byte(hexIndex);
+                Aes128DataSource aes128DataSource = new Aes128DataSource(baseDataSource,
+                        aesKeyBytes, aesIvBytes);
+                dataSource = aes128DataSource;
+            } else {
+                dataSource = baseDataSource;
             }
+        } else {
+            dataSource = baseDataSource;
         }
-        dataSource = baseDataSource;
 
         // Open the source and return.
         return dataSource.open(dataSpec);
@@ -135,6 +158,24 @@ public class CustomHlsDataSource implements DataSource {
             } finally {
                 dataSource = null;
             }
+        }
+    }
+
+    private String getTsIndexHex(String index) {
+        int i = Integer.valueOf(index);
+        return String.format("%032x", i);
+    }
+
+    private String getTsIndex(String tsPath) {
+        try {
+            String[] strs = tsPath.split("\\.");
+            String name = strs[0];
+            String[] s = name.split("_");
+            String index = s[2];
+            return index;
+        } catch (Exception e) {
+            Log.e(TAG, "getTsIndex()" + e.toString());
+            return "";
         }
     }
 }

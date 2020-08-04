@@ -17,13 +17,14 @@ public class CustomHlsDataSourceFactory implements DataSource.Factory {
     private final Context context;
     private final TransferListener listener;
     private final DataSource.Factory baseDataSourceFactory;
+    private final String aesKey;
 
     /**
      * @param context A context.
      * @param userAgent The User-Agent string that should be used.
      */
-    public CustomHlsDataSourceFactory(Context context, String userAgent) {
-        this(context, userAgent, null);
+    public CustomHlsDataSourceFactory(Context context, String userAgent, String aesKey) {
+        this(context, userAgent, null, aesKey);
     }
 
     /**
@@ -32,8 +33,8 @@ public class CustomHlsDataSourceFactory implements DataSource.Factory {
      * @param listener An optional listener.
      */
     public CustomHlsDataSourceFactory(Context context, String userAgent,
-                                      TransferListener listener) {
-        this(context, listener, new DefaultHttpDataSourceFactory(userAgent, listener));
+                                      TransferListener listener, String aesKey) {
+        this(context, listener, new DefaultHttpDataSourceFactory(userAgent, listener), aesKey);
     }
 
     /**
@@ -44,14 +45,15 @@ public class CustomHlsDataSourceFactory implements DataSource.Factory {
      * @see DefaultDataSource#DefaultDataSource(Context, TransferListener, DataSource)
      */
     public CustomHlsDataSourceFactory(Context context, TransferListener listener,
-                                      DataSource.Factory baseDataSourceFactory) {
+                                      DataSource.Factory baseDataSourceFactory, String aesKey) {
         this.context = context.getApplicationContext();
         this.listener = listener;
         this.baseDataSourceFactory = baseDataSourceFactory;
+        this.aesKey = aesKey;
     }
 
     @Override
     public CustomHlsDataSource createDataSource() {
-        return new CustomHlsDataSource(context, listener, baseDataSourceFactory.createDataSource());
+        return new CustomHlsDataSource(context, listener, baseDataSourceFactory.createDataSource(), aesKey);
     }
 }
