@@ -20,12 +20,15 @@ import android.support.annotation.Nullable;
 import android.util.Log;
 
 import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.upstream.DataSchemeDataSource;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSourceInputStream;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.TransferListener;
 import com.google.android.exoplayer2.util.Assertions;
 
+import java.io.FileOutputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -35,6 +38,7 @@ import java.security.spec.AlgorithmParameterSpec;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
+import javax.crypto.CipherOutputStream;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -56,6 +60,8 @@ import javax.crypto.spec.SecretKeySpec;
 
     private CipherInputStream cipherInputStream;
 
+    private long mBytesRemaining = 0;
+
     /**
      * @param upstream The upstream {@link DataSource}.
      * @param encryptionKey The encryption key.
@@ -76,8 +82,8 @@ import javax.crypto.spec.SecretKeySpec;
             throw new RuntimeException(e);
         }
 
-        Key cipherKey = new SecretKeySpec(encryptionKey, "AES");
-        AlgorithmParameterSpec cipherIV = new IvParameterSpec(encryptionIv);
+        SecretKeySpec cipherKey = new SecretKeySpec(encryptionKey, "AES");
+        IvParameterSpec cipherIV = new IvParameterSpec(encryptionIv);
 
         try {
             cipher.init(Cipher.DECRYPT_MODE, cipherKey, cipherIV);
@@ -85,11 +91,15 @@ import javax.crypto.spec.SecretKeySpec;
             throw new RuntimeException(e);
         }
 
+//        long dataLength = upstream.open(dataSpec);
         DataSourceInputStream dataSourceInputStream = new DataSourceInputStream(upstream, dataSpec);
         cipherInputStream = new CipherInputStream(dataSourceInputStream, cipher);
+        cipherInputStream.skip(dataSpec.position);
         dataSourceInputStream.open();
+//        computeBytesRemaining(dataSpec);
 
-        return C.LENGTH_UNSET;
+//        return C.LENGTH_UNSET;
+        return mBytesRemaining;
     }
 
     @Override
@@ -103,11 +113,19 @@ import javax.crypto.spec.SecretKeySpec;
     @Override
     public int read(byte[] buffer, int offset, int readLength) throws IOException {
         //Assertions.checkState(cipherInputStream != null);
+        if (cipherInputStream == null) {
+            Log.d("CustomHlsDataSource", "cipher input stream is null");
+        } else {
+            Log.d("CustomHlsDataSource", "cipher input stream is not null");
+        }
         Assertions.checkNotNull(cipherInputStream);
+        Log.d("CustomHlsDataSource", "readLength: " + readLength);
         int bytesRead = cipherInputStream.read(buffer, offset, readLength);
+        Log.d("CustomHlsDataSource", "bytesRead: " + bytesRead);
         if (bytesRead < 0) {
             return C.RESULT_END_OF_INPUT;
         }
+        mBytesRemaining = bytesRead;
         return bytesRead;
     }
 
@@ -119,5 +137,18 @@ import javax.crypto.spec.SecretKeySpec;
     @Override
     public void addTransferListener(TransferListener transferListener) {
         upstream.addTransferListener(transferListener);
+    }
+
+    private void computeBytesRemaining(DataSpec dataSpec) throws IOException {
+        Log.d("CustomHlsDataSource", "dataSpec length is: " + dataSpec.length);
+        if (dataSpec.length != C.LENGTH_UNSET) {
+            mBytesRemaining = dataSpec.length;
+        } else {
+            mBytesRemaining = cipherInputStream.available();
+            Log.d("CustomHlsDataSource", "cipher input stream available int: " + mBytesRemaining);
+            if (mBytesRemaining == Integer.MAX_VALUE) {
+                mBytesRemaining = C.LENGTH_UNSET;
+            }
+        }
     }
 }

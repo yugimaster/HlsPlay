@@ -114,7 +114,7 @@ public class CustomHlsDataSource implements DataSource {
         if (path != null && !path.isEmpty() && path.contains("drm")) {
             Log.d(TAG, "drm url");
             try {
-                dataSource.open(dataSpec);
+                dataSource = baseDataSource;
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -138,8 +138,11 @@ public class CustomHlsDataSource implements DataSource {
                 byte[] aesIvBytes = ParseSystemUtil.parseHexStr2Byte(hexIndex);
                 Aes128DataSource aes128DataSource = new Aes128DataSource(baseDataSource,
                         aesKeyBytes, aesIvBytes);
-//                dataSource = aes128DataSource;
-                return aes128DataSource.open(dataSpec);
+//                long l = aes128DataSource.open(dataSpec);
+                dataSource = aes128DataSource;
+                long l = dataSource.open(dataSpec);
+                Log.d(TAG, "aes data source return value: " + l);
+                return l;
             } else {
                 dataSource = baseDataSource;
             }
@@ -148,7 +151,9 @@ public class CustomHlsDataSource implements DataSource {
         }
 
         // Open the source and return.
-        return dataSource.open(dataSpec);
+        long lon = dataSource.open(dataSpec);
+        Log.d(TAG, "return value: " + lon);
+        return lon;
     }
 
     @Override
