@@ -14,6 +14,7 @@ import com.google.android.exoplayer2.util.Assertions;
 
 import java.io.IOException;
 
+import wei.yuan.hlsplay.util.AESUtil;
 import wei.yuan.hlsplay.util.ParseSystemUtil;
 
 /**
@@ -44,6 +45,11 @@ public class CustomHlsDataSource implements DataSource {
     private DataSource rtmpDataSource;
 
     private DataSource dataSource;
+
+    private String aesIv;
+
+    private long bytesRemaining;
+    private int bytesOffset;
 
     /**
      * Constructs a new instance, optionally configured to follow cross-protocol redirects.
@@ -119,46 +125,115 @@ public class CustomHlsDataSource implements DataSource {
                 throw new RuntimeException(e);
             }
         }
+//        if (SCHEME_HTTPS.equals(scheme)) {
+//            // 判断是否为ts片段
+//            if (path != null && !path.isEmpty() && path.endsWith(".ts") && !aesKey.isEmpty()) {
+//                byte[] aesKeyBytes = null;
+//                String uri = dataSpec.uri.toString();
+//                Log.d(TAG, "Decrypt: ts uri: " + uri);
+//                if (aesKey.length() == 32) {
+//                    Log.d(TAG, "Decrypt: key hex -> " + aesKey);
+//                    aesKeyBytes = ParseSystemUtil.parseHexStr2Byte(aesKey);
+//                } else if (aesKey.length() == 16) {
+//                    aesKeyBytes = aesKey.getBytes();
+//                }
+//                String index = getTsIndex(path);
+//                String hexIndex = getTsIndexHex(index);
+//                Log.d(TAG, "Decrypt: ts index -> " + index);
+//                Log.d(TAG, "Decrypt: ts index hex -> " + hexIndex);
+//                byte[] aesIvBytes = ParseSystemUtil.parseHexStr2Byte(hexIndex);
+//                Aes128DataSource aes128DataSource = new Aes128DataSource(baseDataSource,
+//                        aesKeyBytes, aesIvBytes);
+//                dataSource = aes128DataSource;
+//                long l = dataSource.open(dataSpec);
+//                Log.d(TAG, "aes data source return value: " + l);
+//                return l;
+//            } else {
+//                dataSource = baseDataSource;
+//            }
+//        } else {
+//            dataSource = baseDataSource;
+//        }
         if (SCHEME_HTTPS.equals(scheme)) {
-            // 判断是否为ts片段
             if (path != null && !path.isEmpty() && path.endsWith(".ts") && !aesKey.isEmpty()) {
-                byte[] aesKeyBytes = null;
-                String uri = dataSpec.uri.toString();
-                Log.d(TAG, "Decrypt: ts uri: " + uri);
-                if (aesKey.length() == 32) {
-                    Log.d(TAG, "Decrypt: key hex -> " + aesKey);
-                    aesKeyBytes = ParseSystemUtil.parseHexStr2Byte(aesKey);
-                } else if (aesKey.length() == 16) {
-                    aesKeyBytes = aesKey.getBytes();
-                }
                 String index = getTsIndex(path);
-                String hexIndex = getTsIndexHex(index);
-                Log.d(TAG, "Decrypt: ts index -> " + index);
-                Log.d(TAG, "Decrypt: ts index hex -> " + hexIndex);
-                byte[] aesIvBytes = ParseSystemUtil.parseHexStr2Byte(hexIndex);
-                Aes128DataSource aes128DataSource = new Aes128DataSource(baseDataSource,
-                        aesKeyBytes, aesIvBytes);
-//                long l = aes128DataSource.open(dataSpec);
-                dataSource = aes128DataSource;
-                long l = dataSource.open(dataSpec);
-                Log.d(TAG, "aes data source return value: " + l);
-                return l;
+                Log.d(TAG, "ts index: " + index);
+                aesIv = getTsIndexHex(index);
             } else {
-                dataSource = baseDataSource;
+                aesIv = "";
             }
-        } else {
-            dataSource = baseDataSource;
         }
+        dataSource = baseDataSource;
 
         // Open the source and return.
         long lon = dataSource.open(dataSpec);
+        bytesRemaining = lon;
         Log.d(TAG, "return value: " + lon);
         return lon;
     }
 
     @Override
     public int read(byte[] buffer, int offset, int readLength) throws IOException {
-        return dataSource.read(buffer, offset, readLength);
+        Log.d(TAG, "buffer: " + ParseSystemUtil.parseByte2HexStr(buffer));
+        Log.d(TAG, "offset: " + offset);
+        Log.d(TAG, "readLength: " + readLength);
+//        int bytesRead;
+//        int i = ParseSystemUtil.bytesToInt(buffer);
+//        Log.d(TAG, "bytes to int: " + i);
+//        byte[] decryptBuf = new byte[buffer.length];
+//        if (!aesKey.isEmpty() && !aesIv.isEmpty()) {
+//            Log.d(TAG, "aes key: " + aesKey);
+//            Log.d(TAG, "aes iv: " + aesIv);
+//            if (i != 0) {
+//                int subLeg = ParseSystemUtil.getBytesLengthWithoutZero(buffer);
+//                Log.d(TAG, "sub buffer length: " + subLeg);
+//                byte[] zeroBytes = ParseSystemUtil.getZeroBytes(readLength - subLeg);
+////                decryptBuf = ParseSystemUtil.getMergedBytes(subDecrypt, zeroBytes);
+//                byte[] decrypt = AESUtil.decrypt(buffer, aesKey, aesIv);
+//                byte[] subDecrypt = ParseSystemUtil.getSubBytes(decrypt, 0, subLeg);
+//                decryptBuf = ParseSystemUtil.getMergedBytes(subDecrypt, zeroBytes);
+//                Log.d(TAG, "decrypt buff: " + ParseSystemUtil.parseByte2HexStr(decryptBuf));
+//                bytesRead = dataSource.read(decryptBuf, offset, subLeg);
+//            } else {
+//                bytesRead = dataSource.read(buffer, offset, readLength);
+//            }
+//        } else {
+//            bytesRead = dataSource.read(buffer, offset, readLength);
+//        }
+//        Log.d(TAG, "bytes read int: " + bytesRead);
+//        return bytesRead;
+//        return dataSource.read(buffer, offset, readLength);
+
+        if (readLength == 0) {
+            Log.d(TAG, "readLength is 0");
+            return 0;
+        } else if (bytesRemaining == 0) {
+            Log.d(TAG, "bytesRemaining is 0");
+            return C.RESULT_END_OF_INPUT;
+        }
+        int bytesToRead = getBytesToRead(readLength);
+        Log.d("CustomHlsDataSource", "bytesToRead: " + bytesToRead);
+
+        int bytesRead;
+        if (!aesKey.isEmpty() && !aesIv.isEmpty()) {
+            Log.d(TAG, "bytes offset: " + bytesOffset);
+            bytesRead = getBytesRead(dataSource, buffer, bytesOffset, bytesToRead);
+        } else {
+            bytesRead = dataSource.read(buffer, offset, bytesToRead);
+        }
+
+        if (bytesRead == -1) {
+            Log.d("CustomHlsDataSource", "bytesRead is -1");
+            return C.RESULT_END_OF_INPUT;
+        }
+
+        if (bytesRemaining != C.LENGTH_UNSET) {
+            bytesRemaining -= bytesRead;
+        }
+
+        Log.d(TAG, "bytesRemaining: " + bytesRemaining);
+        Log.d(TAG, "bytesRead: " + bytesRead);
+        return bytesRead;
     }
 
     @Nullable
@@ -169,6 +244,7 @@ public class CustomHlsDataSource implements DataSource {
 
     @Override
     public void close() throws IOException {
+        Log.d(TAG, "data source close");
         if (dataSource != null) {
             try {
                 dataSource.close();
@@ -194,5 +270,41 @@ public class CustomHlsDataSource implements DataSource {
             Log.e(TAG, "getTsIndex()" + e.toString());
             return "";
         }
+    }
+
+    private int getBytesToRead(int bytesToRead) {
+        if (bytesRemaining == C.LENGTH_UNSET) {
+            return bytesToRead;
+        }
+        return (int) Math.min(bytesRemaining, bytesToRead);
+    }
+
+    private int getBytesRead(DataSource dataSource, byte[] buffer, int offset, int readLength)
+            throws IOException {
+        int bytesRead;
+        byte[] decryptBuf;
+        int i = ParseSystemUtil.bytesToInt(buffer);
+        if (!aesKey.isEmpty() && !aesIv.isEmpty()) {
+            Log.d(TAG, "aes key: " + aesKey);
+            Log.d(TAG, "aes iv: " + aesIv);
+            if (i != 0) {
+                int subLeg = ParseSystemUtil.getBytesLengthWithoutZero(buffer);
+                Log.d(TAG, "sub buffer length: " + subLeg);
+                byte[] zeroBytes = ParseSystemUtil.getZeroBytes(readLength - subLeg);
+                byte[] decrypt = AESUtil.decrypt(buffer, aesKey, aesIv);
+                byte[] subDecrypt = ParseSystemUtil.getSubBytes(decrypt, 0, subLeg);
+                decryptBuf = ParseSystemUtil.getMergedBytes(subDecrypt, zeroBytes);
+                Log.d(TAG, "decrypt buff: " + ParseSystemUtil.parseByte2HexStr(decryptBuf));
+                bytesRead = dataSource.read(decryptBuf, offset, readLength);
+                bytesOffset += bytesRead;
+            } else {
+                Log.d(TAG, "bytes to int is 0");
+                bytesRead = dataSource.read(buffer, offset, readLength);
+            }
+        } else {
+            bytesRead = dataSource.read(buffer, offset, readLength);
+        }
+
+        return bytesRead;
     }
 }

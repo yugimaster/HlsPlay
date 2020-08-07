@@ -35,7 +35,7 @@ public class HlsActivity extends Activity implements Player.EventListener {
 
     private static final String TAG = "HlsActivity";
 
-    private static final String AES_KEY = "767538de076ac0f9e4ecb1bb03e4549c";
+    private static final String AES_KEY = "b3bb73a922b8ffd01413d875b21419ce";
 
     private SimpleExoPlayer mSimpleExoPlayer;
     private SimpleExoPlayerView mExoPlayerView;
@@ -56,7 +56,7 @@ public class HlsActivity extends Activity implements Player.EventListener {
 //                new DefaultHttpDataSourceFactory(userAgent, null));
         CustomHlsDataSourceFactory dataSourceFactory = new CustomHlsDataSourceFactory(this, userAgent, AES_KEY);
 //        String url = "https://gccncc.v.wscdns.com/gc/yxlcyt_1/index.m3u8?contentid=2820180516001";
-        String url = "https://cflstc.r18.com/r18/st1:huslnahMnSUtRS1l4fTGykD4xolYF58aC8N3FI6RYMVCJVdW-QxP0QWi3h+BD3oU2FRvMQcCfcwGkHeJiVKlgQ==/-/cdn/chunklist_b300000.m3u8?ld=1hKJw6gtIFzBS42MXtTirpr7yBAKci49TNqSa2Y0ulovybIsnk5Zkt5B6n3QGnAm5rWJlLQs65q%2B1aTXUYs%2FPO1laesCAHhJ%2BE3P3tI8yK1O0%2BETQQ%2BoCPBL0X%2BApv81KGPsoXBTfQ0NEzJDELDmOHCIDPm1F1%2B86ldNz9doXbpQ6C9gYumR3%2F2dZ2ecD%2BOpyn2kzGqqkYq1KPmRV%2FC7Sytm%2FxQ357DszyI8VJYT%2FNsz5ZYn1Te8zfWjH1J6W4VFS0hMUNkU2zAD145s9c91feKaKgDOqMoTq%2BGv3vIaM7JAeXjG%2FrkOG0BXObfIWzOi";
+        String url = "https://cflstc.r18.com/r18/st1:BFSXnvFPKM0CFupxbBN7I054lI-If0kEvwTH6uYoPwJQHxsY1fTIr-4Ms55Hz9iL0Dqj8EQ6+-DLrKXlLg438Q==/-/cdn/chunklist_b300000.m3u8?ld=oYpNZTaH3gOo5rM2xvA4K44IbahfSWc5mnDcBl6%2F7Zc1xNNZBK%2FD3SEOAbe%2FZ133gQS47ozHBS%2F9s1gSvmitxZ9LDWCAUGhiePi%2BZD1UswL4atLlbrO2ZS0kk%2FaTd8EjzDQl8AMJRuVJWkupyaKsGbQkdyz%2Bj475RrSVHQWA1NRn279%2BqVK%2F3mn646naDq7ran0QuXzJ0otUx6SxKHsI54YZxF%2BbsDe%2BxU82GOOyT48Q7znMAuwbQD%2F63C8Jp2M3Wwae5QyAe9mcnnoYP92dSRt%2BxYpPI316sj7u440TNx0%3D";
         Uri uri = Uri.parse(url);
         MediaSource mediaSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(uri);
 

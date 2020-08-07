@@ -39,6 +39,7 @@ import java.security.spec.AlgorithmParameterSpec;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
+import javax.crypto.EncryptedPrivateKeyInfo;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -62,6 +63,8 @@ import javax.crypto.spec.SecretKeySpec;
 
     private long mBytesRemaining = 0;
 
+    private boolean isOpen = false;
+
     /**
      * @param upstream The upstream {@link DataSource}.
      * @param encryptionKey The encryption key.
@@ -75,6 +78,11 @@ import javax.crypto.spec.SecretKeySpec;
 
     @Override
     public long open(DataSpec dataSpec) throws IOException {
+        if (isOpen) {
+            Log.d("CustomDataSource", "data source has opened");
+            return mBytesRemaining;
+        }
+
         Cipher cipher;
         try {
             cipher = Cipher.getInstance("AES/CBC/NoPadding");
@@ -96,7 +104,9 @@ import javax.crypto.spec.SecretKeySpec;
         cipherInputStream = new CipherInputStream(dataSourceInputStream, cipher);
         cipherInputStream.skip(dataSpec.position);
         dataSourceInputStream.open();
-//        computeBytesRemaining(dataSpec);
+        computeBytesRemaining(dataSpec);
+
+        isOpen = true;
 
 //        return C.LENGTH_UNSET;
         return mBytesRemaining;
@@ -104,15 +114,37 @@ import javax.crypto.spec.SecretKeySpec;
 
     @Override
     public void close() throws IOException {
+        Log.d("CustomDataSource", "data source close");
         if (cipherInputStream != null) {
             cipherInputStream = null;
             upstream.close();
         }
+        if (isOpen)
+            isOpen = false;
     }
+
+//    @Override
+//    public int read(byte[] buffer, int offset, int readLength) throws IOException {
+//        //Assertions.checkState(cipherInputStream != null);
+//        if (cipherInputStream == null) {
+//            Log.d("CustomHlsDataSource", "cipher input stream is null");
+//        } else {
+//            Log.d("CustomHlsDataSource", "cipher input stream is not null");
+//        }
+//        Assertions.checkNotNull(cipherInputStream);
+//        Log.d("CustomHlsDataSource", "readLength: " + readLength);
+//        int bytesRead = cipherInputStream.read(buffer, offset, readLength);
+//        Log.d("CustomHlsDataSource", "bytesRead: " + bytesRead);
+//        if (bytesRead < 0) {
+//            return C.RESULT_END_OF_INPUT;
+//        }
+//        mBytesRemaining = bytesRead;a
+//        return bytesRead;
+//    }
+
 
     @Override
     public int read(byte[] buffer, int offset, int readLength) throws IOException {
-        //Assertions.checkState(cipherInputStream != null);
         if (cipherInputStream == null) {
             Log.d("CustomHlsDataSource", "cipher input stream is null");
         } else {
@@ -120,12 +152,31 @@ import javax.crypto.spec.SecretKeySpec;
         }
         Assertions.checkNotNull(cipherInputStream);
         Log.d("CustomHlsDataSource", "readLength: " + readLength);
-        int bytesRead = cipherInputStream.read(buffer, offset, readLength);
-        Log.d("CustomHlsDataSource", "bytesRead: " + bytesRead);
-        if (bytesRead < 0) {
+
+        if (readLength == 0) {
+            Log.d("CustomHlsDataSource", "readLength is 0");
+            return 0;
+        }
+        else if (mBytesRemaining == 0) {
+            Log.d("CustomHlsDataSource", "mBytesRemaining is 0");
             return C.RESULT_END_OF_INPUT;
         }
-        mBytesRemaining = bytesRead;
+        int bytesToRead = getBytesToRead(readLength);
+        Log.d("CustomHlsDataSource", "bytesToRead: " + bytesToRead);
+        int bytesRead;
+        bytesRead = cipherInputStream.read(buffer, offset, bytesToRead);
+
+        if (bytesRead == -1) {
+            Log.d("CustomHlsDataSource", "bytesRead is -1");
+            return C.RESULT_END_OF_INPUT;
+        }
+
+        if (mBytesRemaining != C.LENGTH_UNSET) {
+            mBytesRemaining -= bytesRead;
+        }
+
+        Log.d("CustomHlsDataSource", "mBytesRemaining: " + mBytesRemaining);
+        Log.d("CustomHlsDataSource", "bytesRead: " + bytesRead);
         return bytesRead;
     }
 
@@ -140,9 +191,10 @@ import javax.crypto.spec.SecretKeySpec;
     }
 
     private void computeBytesRemaining(DataSpec dataSpec) throws IOException {
-        Log.d("CustomHlsDataSource", "dataSpec length is: " + dataSpec.length);
-        if (dataSpec.length != C.LENGTH_UNSET) {
-            mBytesRemaining = dataSpec.length;
+        long dataLength = upstream.open(dataSpec);
+        Log.d("CustomHlsDataSource", "dataSpec length is: " + dataLength);
+        if (dataLength != C.LENGTH_UNSET) {
+            mBytesRemaining = dataLength;
         } else {
             mBytesRemaining = cipherInputStream.available();
             Log.d("CustomHlsDataSource", "cipher input stream available int: " + mBytesRemaining);
@@ -150,5 +202,12 @@ import javax.crypto.spec.SecretKeySpec;
                 mBytesRemaining = C.LENGTH_UNSET;
             }
         }
+    }
+
+    private int getBytesToRead(int bytesToRead) {
+        if (mBytesRemaining == C.LENGTH_UNSET) {
+            return bytesToRead;
+        }
+        return (int) Math.min(mBytesRemaining, bytesToRead);
     }
 }
